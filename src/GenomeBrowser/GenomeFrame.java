@@ -28,9 +28,10 @@ import javax.swing.table.TableColumn;
  * @author davidoluwasusi
  */
 public class GenomeFrame extends javax.swing.JFrame {
+
     private String fastaPath;
-    
-    public JFrame getOwnFrame(){
+
+    public JFrame getOwnFrame() {
         return this;
     }
 
@@ -42,57 +43,51 @@ public class GenomeFrame extends javax.swing.JFrame {
     }
 
     private String processSelectedFile(FileDialog nameBox) {
-        try{
-        String fileDirectory = nameBox.getDirectory();
-        String fileName = nameBox.getFile();
-        fileName = fileDirectory.concat(fileName);
-        return fileName;
-        }catch(Exception error){
-        //an error occured return an empty path to trigger validation
-        error.printStackTrace();
-        return "";
+        try {
+            String fileDirectory = nameBox.getDirectory();
+            String fileName = nameBox.getFile();
+            fileName = fileDirectory.concat(fileName);
+            return fileName;
+        } catch (Exception error) {
+            //an error occured return an empty path to trigger validation
+            error.printStackTrace();
+            return "";
         }
     }
 
-    private Object[][] parseGtfFile(String filePath) {
-        try (CSVReader reader = new CSVReader(new FileReader(filePath), '\t')) { // Tab-separated values
-            List<Object[]> tableData = new ArrayList<>();
-            String[] nextLine;
-
-            while ((nextLine = reader.readNext()) != null) {
-                // Skip comments or empty lines
-                if (nextLine[0].strip().startsWith("#") || nextLine[0].isEmpty()) {
-                    continue;
+    private Object[][] parseGffFile(String filePath) {
+        List<Object[]> dataList = new ArrayList<>();
+        try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                if (line.startsWith("#")) {
+                    continue; // Skip comments and metadata
                 }
-
-                // Ensure the line has the expected number of columns (e.g., 9 fields)
-                if (nextLine.length < 9) {
-                    continue; // Skip invalid lines
+                String[] fields = line.split("\t");
+                if (fields.length < 9) {
+                    continue; // Ensure correct format
                 }
+                // Parse attributes (GFF2 style: ID "..." format)
+                String attributes = fields[8].replace("\"", ""); // Remove double quotes
 
-                // Parse relevant fields
-                Object[] row = new Object[]{
-                    nextLine[0], // Chromosome
-                    nextLine[1], // Source
-                    nextLine[2], // Feature
-                    Integer.parseInt(nextLine[3]), // Start
-                    Integer.parseInt(nextLine[4]), // End
-                    nextLine[5], // Score
-                    nextLine[6], // Frame
-                    nextLine[8] // Attributes
+                Object[] row = {
+                    fields[0], // Chromosome
+                    fields[1], // Source
+                    fields[2], // Feature Type
+                    Integer.parseInt(fields[3]), // Start Position
+                    Integer.parseInt(fields[4]), // End Position
+                    fields[5], // Score
+                    fields[6], // Strand
+                    fields[7], // Phase
+                    attributes // Attributes
                 };
-
-                tableData.add(row);
+                dataList.add(row);
             }
-
-            // Convert List<Object[]> to Object[][]
-            Object[][] gtfData = tableData.toArray(new Object[0][]);
-
-            return gtfData;
-        } catch (Exception e) {
-            System.out.println("Error parsing GTF file: " + e.getMessage());
-            return new Object[0][];
+        } catch (IOException e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(null, "Error reading GFF file!", "File Error", JOptionPane.ERROR_MESSAGE);
         }
+        return dataList.toArray(new Object[0][]);
     }
 
     /**
@@ -152,15 +147,14 @@ public class GenomeFrame extends javax.swing.JFrame {
             basicStatsTabLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(basicStatsTabLayout.createSequentialGroup()
                 .addContainerGap()
-                .addComponent(basicStatisticsPanelOverview, javax.swing.GroupLayout.DEFAULT_SIZE, 941, Short.MAX_VALUE)
-                .addContainerGap())
+                .addComponent(basicStatisticsPanelOverview, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addContainerGap(403, Short.MAX_VALUE))
         );
         basicStatsTabLayout.setVerticalGroup(
             basicStatsTabLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(basicStatsTabLayout.createSequentialGroup()
-                .addGap(27, 27, 27)
-                .addComponent(basicStatisticsPanelOverview, javax.swing.GroupLayout.PREFERRED_SIZE, 323, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addContainerGap(383, Short.MAX_VALUE))
+                .addComponent(basicStatisticsPanelOverview, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(0, 424, Short.MAX_VALUE))
         );
 
         geneDetailtabViewSection.addTab("Basic Statistics", basicStatsTab);
@@ -180,14 +174,14 @@ public class GenomeFrame extends javax.swing.JFrame {
 
         geneDetailtabViewSection.addTab("Explore Genes", exploreGenesTab);
 
-        gtfFileUploadButton.setText("upload .gtf File");
+        gtfFileUploadButton.setText("upload .gff File");
         gtfFileUploadButton.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 gtfFileUploadButtonActionPerformed(evt);
             }
         });
 
-        fastaFileUploadButton.setText("upload .fa file");
+        fastaFileUploadButton.setText("upload fasta file");
         fastaFileUploadButton.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 fastaFileUploadButtonActionPerformed(evt);
@@ -258,104 +252,54 @@ public class GenomeFrame extends javax.swing.JFrame {
         pack();
     }// </editor-fold>//GEN-END:initComponents
 
-    public static Map<String, List<int[]>> parseExons(String filePath) {
-        Map<String, List<int[]>> exonData = new HashMap<>();
 
-        try (BufferedReader reader = new BufferedReader(new FileReader(filePath))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.startsWith("#")) {
-                    continue; // Skip comments
-                }
-                String[] columns = line.split("\t");
-                if (columns.length < 9 || !"exon".equals(columns[2])) {
-                    continue; // Skip non-exon entries
-                }
-                try {
-                    int start = Integer.parseInt(columns[3]);
-                    int end = Integer.parseInt(columns[4]);
-                    String attributes = columns[8];
-                    String geneId = BasicStatisticsCalculator.getAttribute(attributes, "gene_name");
 
-                    exonData.computeIfAbsent(geneId, k -> new ArrayList<>()).add(new int[]{start, end});
-                } catch (NumberFormatException e) {
-                    // Handle invalid start or end values
-                    System.err.println("Invalid number format in line: " + line);
-                }
-            }
-        } catch (IOException e) {
-            
-            // Log the exception and return an empty map
-            System.err.println("Error reading GTF file: " + e.getMessage());
-            JOptionPane.showMessageDialog(
-                    null,
-                    "Cannot get exons from file, Gtf file is corrupt",
-                    "File Selection Error",
-                    JOptionPane.ERROR_MESSAGE
-            );
-        }
-        return exonData;
-    }
-    
-
-    
     private void gtfFileUploadButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_gtfFileUploadButtonActionPerformed
         // TODO add your handling code here:
+        // File selection dialog
         FileDialog nameBox;
-        nameBox = new FileDialog(this, "Open .gtf File",
-                FileDialog.LOAD);
-        // Display the file chooser dialog & wait
+        nameBox = new FileDialog(this, "Open .gff File", FileDialog.LOAD);
         nameBox.setVisible(true);
         String namePath = processSelectedFile(nameBox);
 
         // Validate file extension
-        if (namePath.endsWith(".gtf")) {
-            fileSelectedLabel.setText("Selected GTF file: " + nameBox.getFile());
+        if (namePath.endsWith(".gff")) {
+            fileSelectedLabel.setText("Selected GFF file: " + nameBox.getFile());
         } else {
             JOptionPane.showMessageDialog(
                     this,
-                    "Invalid file type. Please select a valid .gtf file.",
+                    "Invalid file type. Please select a valid .gff file.",
                     "File Selection Error",
                     JOptionPane.ERROR_MESSAGE
             );
+            return;
         }
-        // Define column headers
+        geneExplorerOverview.setExplorerGffFilePath(namePath);
+
+        // Define GFF column headers
         String[] columnHeaders = {
-            "Chromosome", "Source", "Feature", "Start", "End", "Score", "Frame", "Attributes"
+            "Chromosome", "Source", "Feature", "Start", "End", "Score", "Strand", "Phase", "Attributes"
         };
 
-        // Parse data from the GTF file
-        Object[][] tableData = parseGtfFile(namePath);
-        var exonData = parseExons(namePath);
-   
-        // save the parsed Exons for highlighting later
-        sequenceViewerOverview.setParsedExons(exonData);
-        geneExplorerOverview.setParsedExons(exonData);
+        // Parse GFF data
+        Object[][] tableData = parseGffFile(namePath);
 
-        BasicStatisticsCalculator calculator = new BasicStatisticsCalculator();
-        var statistics = calculator.calculateGTFStats(tableData);
-        StringBuilder statsString = new StringBuilder("GTF File Stats:").append("\n");
-        statistics.forEach((key, value) -> statsString.append(key + ": " + value).append("\n"));
-        
-        var currentText = String.join("\n", basicStatisticsPanelOverview.getTextPane().getText());
-        basicStatisticsPanelOverview.getTextPane().setText(currentText.concat("\n").concat(statsString.toString()));
-    
-
-        // Get the JTable from TableViewer
+ 
+        // Update the JTable with parsed data
         JTable tablePane = tableViewerOverviewGtfTable.getTablePane();
-
-        // Update the JTable model with the parsed data
         javax.swing.table.DefaultTableModel model = new javax.swing.table.DefaultTableModel(tableData, columnHeaders) {
             @Override
             public boolean isCellEditable(int row, int column) {
-                return false; // Make the table cells non-editable
+                return false; // Make table cells non-editable
             }
         };
         tablePane.setModel(model);
-        tablePane.setAutoResizeMode(JTable.AUTO_RESIZE_OFF); // Allow horizontal scrolling
+        tablePane.setAutoResizeMode(JTable.AUTO_RESIZE_OFF); // Enable horizontal scrolling
+
+        // Adjust column widths dynamically
         for (int i = 0; i < tablePane.getColumnCount(); i++) {
             TableColumn column = tablePane.getColumnModel().getColumn(i);
-            int preferredWidth = 150; // Minimum width for all columns
+            int preferredWidth = 150; // Default width
             for (int row = 0; row < tablePane.getRowCount(); row++) {
                 TableCellRenderer renderer = tablePane.getCellRenderer(row, i);
                 Component comp = tablePane.prepareRenderer(renderer, row, i);
@@ -370,45 +314,45 @@ public class GenomeFrame extends javax.swing.JFrame {
     private void fastaFileUploadButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_fastaFileUploadButtonActionPerformed
         // TODO add your handling code here:
         // Display the file chooser dialog on the EDT
-    FileDialog nameBox = new FileDialog(this, "Open .fasta File", FileDialog.LOAD);
-    nameBox.setVisible(true); // FileDialog is modal, so this won't block the UI
+        FileDialog nameBox = new FileDialog(this, "Open .fasta File", FileDialog.LOAD);
+        nameBox.setVisible(true); // FileDialog is modal, so this won't block the UI
 
-    // Process the selected file
-    String namePath = processSelectedFile(nameBox);
-    if (namePath != null && namePath.endsWith(".fa")) {
-        fastaPath = namePath;
-        geneExplorerOverview.setExplorerFastaFilePath(fastaPath);
-        // Start background processing
-        new SwingWorker<Void, Void>() {
-            @Override
-            protected Void doInBackground() {
-                // Load the FASTA file in a background thread
-                TextPaneUtil.toggleApplicationLoader(getOwnFrame(), true);
-                sequenceViewerOverview.loadupFastaFile(
-                        namePath,
-                        basicStatisticsPanelOverview.getTextPane(),
-                        geneExplorerOverview
-                );
-                
-                return null;
-            }
+        // Process the selected file
+        String namePath = processSelectedFile(nameBox);
+        if (namePath != null && (namePath.endsWith(".fasta") || namePath.endsWith(".fa"))) {
+            fastaPath = namePath;
+            geneExplorerOverview.setExplorerFastaFilePath(fastaPath);
+            // Start background processing
+            new SwingWorker<Void, Void>() {
+                @Override
+                protected Void doInBackground() {
+                    // Load the FASTA file in a background thread
+                    TextPaneUtil.toggleApplicationLoader(getOwnFrame(), true);
+                    sequenceViewerOverview.loadupFastaFile(
+                            namePath,
+                            basicStatisticsPanelOverview.getTextPane(),
+                            geneExplorerOverview
+                    );
 
-            @Override
-            protected void done() {
-                // Update the UI once processing is complete
-                fastaFileSelectedLabel.setText("Selected Fasta file: " + nameBox.getFile());
-                
-            }
-        }.execute();
-    } else {
-        // Handle invalid file selection
-        JOptionPane.showMessageDialog(
-                this,
-                "Invalid file type. Please select a valid .fa file.",
-                "File Selection Error",
-                JOptionPane.ERROR_MESSAGE
-        );
-    }
+                    return null;
+                }
+
+                @Override
+                protected void done() {
+                    // Update the UI once processing is complete
+                    fastaFileSelectedLabel.setText("Selected Fasta file: " + nameBox.getFile());
+
+                }
+            }.execute();
+        } else {
+            // Handle invalid file selection
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Invalid file type. Please select a valid fasta file.",
+                    "File Selection Error",
+                    JOptionPane.ERROR_MESSAGE
+            );
+        }
     }//GEN-LAST:event_fastaFileUploadButtonActionPerformed
 
     /**
