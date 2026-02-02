@@ -23,6 +23,8 @@ import javax.swing.JProgressBar;
 import javax.swing.JTextPane;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
+import javax.swing.text.html.HTMLDocument;
+import javax.swing.text.html.HTMLEditorKit;
 
 /**
  * Utility class for handling JTextPane-related actions, including downloading
@@ -116,6 +118,17 @@ public class TextPaneUtil {
                 e.printStackTrace();
                 JOptionPane.showMessageDialog(parent, "Error saving file: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
             }
+        }
+    }
+    
+    public static void appendHtmlToTextPane(JTextPane textPane, String html) {
+        HTMLDocument doc = (HTMLDocument) textPane.getDocument();
+        HTMLEditorKit kit = (HTMLEditorKit) textPane.getEditorKit();
+
+        try {
+            kit.insertHTML(doc, doc.getLength(), html, 0, 0, null);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 }

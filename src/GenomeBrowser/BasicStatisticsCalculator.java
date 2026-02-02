@@ -1,93 +1,83 @@
 package GenomeBrowser;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.io.*;
+import java.util.*;
 
-/**
- *
- * @author davidoluwasusi
- */
 public class BasicStatisticsCalculator {
 
-    public Map<String, Object> calculateGTFStats(Object[][] gtfData) {
-        Map<String, Object> stats = new LinkedHashMap<>(); // Use LinkedHashMap to preserve insertion order
-        Map<String, List<int[]>> geneExons = new HashMap<>();
-        Map<String, Integer> geneLengths = new HashMap<>();
+    public AssemblyMetrics calculateAssemblyMetrics(String fastaFilePath) {
+        List<Integer> contigLengths = new ArrayList<>();
+        int currentLength = 0;
+        int totalLength = 0;
+        int largestContig = 0;
 
-        try {
-            for (Object[] row : gtfData) {
-                String feature = (String) row[2];
-                int start = (int) row[3];
-                int end = (int) row[4];
-                String attributes = (String) row[7];
-
-                // Only process "exon" features
-                if ("exon".equalsIgnoreCase(feature)) {
-                    String geneName = getAttribute(attributes, "gene_name");
-                    int length = end - start + 1;
-
-                    // Track exons for each gene
-                    geneExons.computeIfAbsent(geneName, k -> new ArrayList<>()).add(new int[]{start, end});
-
-                    // Calculate gene length (sum of exon lengths)
-                    geneLengths.put(geneName, geneLengths.getOrDefault(geneName, 0) + length);
+        try (BufferedReader br = new BufferedReader(new FileReader(fastaFilePath))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                if (line.startsWith(">")) {
+                    if (currentLength > 0) {
+                        contigLengths.add(currentLength);
+                        totalLength += currentLength;
+                        if (currentLength > largestContig) {
+                            largestContig = currentLength;
+                        }
+                        currentLength = 0;
+                    }
+                } else {
+                    currentLength += line.trim().length();
                 }
             }
-
-            // Calculate required stats
-            int totalExons = geneExons.values().stream().mapToInt(List::size).sum();
-            int totalGenes = geneExons.size();
-            double avgExonsPerGene = totalGenes == 0 ? 0 : roundToTwoDecimalPlaces((double) totalExons / totalGenes);
-
-            String longestGeneName = geneLengths.entrySet().stream()
-                    .max(Map.Entry.comparingByValue())
-                    .map(Map.Entry::getKey)
-                    .orElse(null);
-
-            String shortestGeneName = geneLengths.entrySet().stream()
-                    .min(Map.Entry.comparingByValue())
-                    .map(Map.Entry::getKey)
-                    .orElse(null);
-
-            int longestGene = geneLengths.getOrDefault(longestGeneName, 0);
-            int shortestGene = geneLengths.getOrDefault(shortestGeneName, 0);
-
-            double avgGeneLength = totalGenes == 0
-                    ? 0
-                    : roundToTwoDecimalPlaces(geneLengths.values().stream().mapToInt(Integer::intValue).average().orElse(0));
-
-            // Add results to stats map in specified order
-            stats.put("Average Exons Per Gene", avgExonsPerGene);
-            stats.put("Longest Gene Name", longestGeneName);
-            stats.put("Longest Gene Length", longestGene);
-            stats.put("Shortest Gene Name", shortestGeneName);
-            stats.put("Shortest Gene Length", shortestGene);
-            stats.put("Average Gene Length", avgGeneLength);
-
-        } catch (Exception e) {
-            System.out.println("Error calculating GTF statistics: " + e.getMessage());
+            if (currentLength > 0) {
+                contigLengths.add(currentLength);
+                totalLength += currentLength;
+                if (currentLength > largestContig) {
+                    largestContig = currentLength;
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            return new AssemblyMetrics(0, 0, 0, 0, 0);
         }
 
-        return stats;
+        int totalContigs = contigLengths.size();
+        double averageLength = totalContigs > 0 ? (double) totalLength / totalContigs : 0;
+        int n50 = calculateN50(contigLengths, totalLength);
+
+        return new AssemblyMetrics(totalContigs, totalLength, largestContig, averageLength, n50);
     }
 
-    // Helper to extract attribute values from the attributes column
-    public static String getAttribute(String attributes, String key) {
-        String[] pairs = attributes.split(";");
-        for (String pair : pairs) {
-            String[] parts = pair.trim().split(" ");
-            if (parts[0].equals(key)) {
-                return parts[1].replace("\"", "");
+    private int calculateN50(List<Integer> contigLengths, int totalLength) {
+        if (contigLengths.isEmpty()) return 0;
+
+        contigLengths.sort(Collections.reverseOrder());
+        int halfLength = totalLength / 2;
+        int cumulativeLength = 0;
+
+        for (int length : contigLengths) {
+            cumulativeLength += length;
+            if (cumulativeLength >= halfLength) {
+                return length;
             }
         }
-        return "";
-    }
-
-    // Helper to round to two decimal places
-    private static double roundToTwoDecimalPlaces(double value) {
-        return Math.round(value * 100.0) / 100.0;
+        return 0;
     }
 }
+
+// Helper class to store metrics
+class AssemblyMetrics {
+    int totalContigs;
+    int totalLength;
+    int largestContig;
+    double averageLength;
+    int n50;
+
+    public AssemblyMetrics(int totalContigs, int totalLength, int largestContig, double averageLength, int n50) {
+        this.totalContigs = totalContigs;
+        this.totalLength = totalLength;
+        this.largestContig = largestContig;
+        this.averageLength = averageLength;
+        this.n50 = n50;
+    }
+}
+
+

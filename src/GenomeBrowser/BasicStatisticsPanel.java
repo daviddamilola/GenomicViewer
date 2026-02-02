@@ -41,6 +41,7 @@ public class BasicStatisticsPanel extends javax.swing.JPanel {
 
         jScrollPane1.setViewportView(jTextPane1);
 
+        statisticsContent.setEditable(false);
         jScrollPane2.setViewportView(statisticsContent);
 
         jLabel1.setText("Basic statistics");
